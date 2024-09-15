@@ -1,0 +1,638 @@
+using System;
+using System.Collections.Generic;
+using System.ComponentModel;
+using System.Data;
+using System.Data.Common;
+using System.Data.SQLite;
+using System.Drawing;
+using System.Linq;
+using System.Text;
+using System.Threading.Tasks;
+using System.Windows.Forms;
+using System.IO;
+using static System.Net.Mime.MediaTypeNames;
+
+namespace iNdex
+{
+    public partial class formData : Form
+    {
+        private formLogin formLogin = new formLogin();
+        //private formProgressBar formProgressBar; >> formProgressBar Loading Ekranı İçin
+        private string myConnectionString = "Data Source=idata.db;Version=3;New=False;Compress=True;datetimeformat=CurrentCulture;";
+        private SQLiteConnection myConnection = new SQLiteConnection("Data Source=idata.db;Version=3;New=False;Compress=True;datetimeformat=CurrentCulture;");
+        private SQLiteCommand myCommand;
+        //private SQLiteCommand myCommand2;
+        //private SQLiteDataReader myDataReader;
+        private SQLiteDataAdapter myDataAdapter;
+        //private SQLiteCommandBuilder myCommandBuilder;
+        //private SQLiteConnectionStringBuilder myConnectionStringBuilder;
+        private DataTable myDataTable;
+        //private DataSet myDataSet;
+        private BindingSource myBindingSource = new BindingSource();
+        //private MemoryStream myMemoryStream;
+        //byte[] imgBytes = null;
+
+        public formData()
+        {
+            InitializeComponent();
+        }
+
+        private void formData_Load(object sender, EventArgs e)
+        {
+            textBoxEdit.Visible = false;
+            CheckFile();
+            CheckConnection();
+            LoadData();
+            AdjustColumnWidth();
+        }
+
+        private void AdjustColumnWidth()
+        {
+            // dataGridView1'in toplam genişliğini al
+            int totalWidth = dataGridView1.ClientSize.Width;
+
+            // Diğer kolonların genişliklerini topla
+            int otherColumnsWidth = 0;
+            foreach (DataGridViewColumn column in dataGridView1.Columns)
+            {
+                if (column.Name != "Input")
+                {
+                    otherColumnsWidth += column.Width;
+                }
+            }
+
+            // Input kolonunun genişliğini ayarla
+            dataGridView1.Columns["Input"].Width = totalWidth - otherColumnsWidth;
+        }
+
+        private void formData_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            try
+            {
+                if (e.CloseReason == CloseReason.UserClosing)
+                {
+                    DialogResult sonuc = MessageBox.Show("Kullanıcı giriş ekranına dönülsün mü?", "Çıkış", MessageBoxButtons.YesNoCancel, MessageBoxIcon.Question);
+
+                    if (sonuc == DialogResult.Yes)
+                    {
+                        Hide();
+                        formLogin.Show();
+                    }
+                    else if (sonuc == DialogResult.No)
+                    {
+                        System.Windows.Forms.Application.Exit();
+                    }
+                    else if (sonuc == DialogResult.Cancel)
+                    {
+                        e.Cancel = true;
+                        return;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Hata - Form Kapanış", MessageBoxButtons.OK, MessageBoxIcon.Exclamation);
+            }
+        }
+        
+        private void CheckFile()
+        {
+            try
+            {
+                if (File.Exists("idata.db"))
+                {
+                    toolStripLabelDosyaDurum.Text = "Başarılı";
+                    toolStripLabelDosyaDurum.ForeColor = Color.Green;
+                    CheckConnection();
+                }
+                else
+                {
+                    toolStripLabelDosyaDurum.Text = "Başarısız";
+                    toolStripLabelDosyaDurum.ForeColor = Color.Red;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message + "\nVeritabanı dosyası bulunamadı.", "Hata - Dosya", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                toolStripLabelDosyaDurum.Text = "Başarısız";
+                toolStripLabelDosyaDurum.ForeColor = Color.Red;
+            }
+        }
+        
+        private void CheckConnection()
+        {
+            try
+            {
+                myConnection.Open();
+                ConnectionState connectionState = myConnection.State;
+                if (connectionState == ConnectionState.Open)
+                {
+                    toolStripLabelBaglantiDurum.Text = "Başarılı";
+                    toolStripLabelBaglantiDurum.ForeColor = Color.Green;
+                }
+                else
+                {
+                    toolStripLabelBaglantiDurum.Text = "Başarısız";
+                    toolStripLabelBaglantiDurum.ForeColor = Color.Red;
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message + "\nVeritabanı bağlantısı başarısız.", "Hata - Bağlantı", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                toolStripLabelBaglantiDurum.Text = "Başarısız";
+                toolStripLabelBaglantiDurum.ForeColor = Color.Red;
+            }
+            finally
+            {
+                myConnection.Close();
+            }
+        }
+        
+        private double GetDatabaseSizeInMB(string databasePath)
+        {
+            var fileInfo = new System.IO.FileInfo(databasePath);
+            double sizeInMB = fileInfo.Length / (1024.0 * 1024.0);
+            return sizeInMB;
+        }
+        
+        private void CheckButtonEnableStatus()
+        {
+            if (dataGridView1.Rows.Count > 0)
+            {
+
+            }
+            else if (dataGridView1.Rows.Count <= 0)
+            {
+
+            }
+        }
+        
+        private void LoadData()
+        {
+            try
+            {
+                myConnection = new SQLiteConnection(myConnectionString);
+                myConnection.Open();
+
+                myCommand = new SQLiteCommand("SELECT * FROM data", myConnection);
+
+                myDataAdapter = new SQLiteDataAdapter(myCommand);
+                myDataTable = new DataTable();
+                myDataAdapter.Fill(myDataTable);
+
+                // Verileri alfabetik olarak sıralamak için DataView kullanın
+                DataView dataView = myDataTable.DefaultView;
+                dataView.Sort = "Title ASC"; // "Title" kolonuna göre alfabetik sıralama
+
+                dataGridView1.DataSource = dataView.ToTable();
+
+                dataGridView1.Columns["ID"].Visible = false;
+
+                double dbSizeMB = GetDatabaseSizeInMB("idata.db");
+                labelDBSizeMB.Text = $"Veritabanı Boyutu: {dbSizeMB:F2} MB";
+
+                dataGridView1.Columns["ID"].ReadOnly = true; // dataGridView'deki ID kolonu salt okunur (editlenemez).
+
+                // Title kolonundaki verileri alfabetik olarak listBoxTitle'e ekle
+                var titles = myDataTable.AsEnumerable()
+                                        .Select(row => row.Field<string>("Title"))
+                                        .OrderBy(title => title)
+                                        .ToList();
+
+                listBoxTitle.Items.Clear();
+                listBoxTitle.Items.AddRange(titles.ToArray());
+
+                // En son satırı seç
+                if (dataGridView1.Rows.Count > 0)
+                {
+                    int lastRowIndex = dataGridView1.Rows.Count - 1;
+                    dataGridView1.ClearSelection();
+                    dataGridView1.Rows[lastRowIndex].Selected = true;
+                    dataGridView1.FirstDisplayedScrollingRowIndex = lastRowIndex;
+
+                    // richTextBox1'ı güncelle
+                    DataGridViewRow lastRow = dataGridView1.Rows[lastRowIndex];
+                    richTextBox1.Text = lastRow.Cells["Input"].Value.ToString();
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show($"Hata: {ex.Message}\nTür: {ex.GetType()}", "Hata", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            finally
+            {
+                if (myConnection != null)
+                {
+                    if (myConnection.State == ConnectionState.Open)
+                    {
+                        myConnection.Close();
+                    }
+                    myConnection.Dispose();
+                }
+            }
+        }
+
+        private void dataGridView1_CellClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex >= 0 && dataGridView1.SelectedRows.Count == 1) // Başlık satırının tıklanmasını ve çoklu seçim yapılmasını önlemek için
+            {
+                DataGridViewRow row = dataGridView1.Rows[e.RowIndex];
+                string title = row.Cells["Title"].Value.ToString();
+                string input = row.Cells["Input"].Value.ToString();
+                UpdateRichTextBoxAndListBox(title, input);
+            }
+        }
+
+        private void richTextBox1_TextChanged(object sender, EventArgs e)
+        {
+            if (dataGridView1.CurrentRow != null)
+            {
+                // Seçili satırın Input kolonunu güncelle
+                dataGridView1.CurrentRow.Cells["Input"].Value = richTextBox1.Text;
+
+                // Değişikliklerin hemen yansımasını sağlamak için
+                dataGridView1.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        }
+
+        private void buttonLoadData_Click(object sender, EventArgs e)
+        {
+            LoadData();
+        }
+        
+        private void buttonAddRow_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                using (SQLiteConnection myConnection = new SQLiteConnection(myConnectionString))
+                {
+                    myConnection.Open();
+                    SQLiteCommand myCommand = new SQLiteCommand("INSERT INTO data (Title, Input) VALUES (@Title, @Input)", myConnection);
+                    myCommand.Parameters.AddWithValue("@Title", "Yeni Başlık");
+                    myCommand.Parameters.AddWithValue("@Input", "Yeni Veri");
+                    myCommand.ExecuteNonQuery();
+                }
+                LoadData(); // Verileri yeniden yükle
+
+                // Yeni eklenen satırı bul ve seç
+                string newTitle = "Yeni Başlık";
+                foreach (DataGridViewRow row in dataGridView1.Rows)
+                {
+                    if (row.Cells["Title"].Value.ToString() == newTitle)
+                    {
+                        dataGridView1.ClearSelection();
+                        row.Selected = true;
+                        dataGridView1.FirstDisplayedScrollingRowIndex = row.Index;
+                        break;
+                    }
+                }
+
+                // listBoxTitle'da yeni eklenen başlığı bul ve çift tıklama olayını tetikle
+                int index = listBoxTitle.Items.IndexOf(newTitle);
+                if (index != ListBox.NoMatches)
+                {
+                    listBoxTitle.SelectedIndex = index;
+                    listBoxTitle_MouseDoubleClick(listBoxTitle, new MouseEventArgs(MouseButtons.Left, 2, 0, 0, 0));
+                }
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }       
+        }
+        
+        private void buttonUpdate_Click(object sender, EventArgs e)
+        {
+            if (dataGridView1.SelectedRows.Count > 0)
+            {
+                DataGridViewRow selectedRow = dataGridView1.SelectedRows[0];
+                int id = Convert.ToInt32(selectedRow.Cells["ID"].Value);
+                string title = selectedRow.Cells["Title"].Value.ToString();
+                string input = selectedRow.Cells["Input"].Value.ToString();
+
+                try
+                {
+                    using (SQLiteConnection myConnection = new SQLiteConnection(myConnectionString))
+                    {
+                        myConnection.Open();
+                        SQLiteCommand myCommand = new SQLiteCommand("UPDATE data SET Title = @Title, Input = @Input WHERE ID = @ID", myConnection);
+                        myCommand.Parameters.AddWithValue("@Title", title);
+                        myCommand.Parameters.AddWithValue("@Input", input);
+                        myCommand.Parameters.AddWithValue("@ID", id);
+                        myCommand.ExecuteNonQuery();
+                    }
+                    MessageBox.Show("Güncelleme başarılı.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    LoadData(); // Verileri yeniden yükle
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+        
+        private void buttonDelete_Click(object sender, EventArgs e)
+        {
+            if (dataGridView1.SelectedRows.Count > 0)
+            {
+                DialogResult result = MessageBox.Show("Seçili kaydı silmek istediğinizden emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+                if (result == DialogResult.Yes)
+                {
+                    DataGridViewRow selectedRow = dataGridView1.SelectedRows[0];
+                    int id = Convert.ToInt32(selectedRow.Cells["ID"].Value);
+
+                    try
+                    {
+                        using (SQLiteConnection myConnection = new SQLiteConnection(myConnectionString))
+                        {
+                            myConnection.Open();
+                            SQLiteCommand myCommand = new SQLiteCommand("DELETE FROM data WHERE ID = @ID", myConnection);
+                            myCommand.Parameters.AddWithValue("@ID", id);
+                            myCommand.ExecuteNonQuery();
+                        }
+                        LoadData(); // Verileri yeniden yükle
+                        MessageBox.Show("Silme işlemi başarılı.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                    }
+                    catch (Exception ex)
+                    {
+                        MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                    }
+                }
+            }
+        }
+        
+        private void buttonMultipleDelete_Click(object sender, EventArgs e)
+        {
+            DialogResult result = MessageBox.Show("Seçili kayıtları silmek istediğinizden emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    using (SQLiteConnection myConnection = new SQLiteConnection(myConnectionString))
+                    {
+                        myConnection.Open();
+                        foreach (DataGridViewRow row in dataGridView1.SelectedRows)
+                        {
+                            int id = Convert.ToInt32(row.Cells["ID"].Value);
+                            SQLiteCommand myCommand = new SQLiteCommand("DELETE FROM data WHERE ID = @ID", myConnection);
+                            myCommand.Parameters.AddWithValue("@ID", id);
+                            myCommand.ExecuteNonQuery();
+                        }
+                    }
+                    LoadData(); // Verileri yeniden yükle
+                    MessageBox.Show("Silme işlemi başarılı.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+            }
+        }
+        
+        private void buttonMultipleUpdate_Click(object sender, EventArgs e)
+        {
+            try
+            {
+                myConnection = new SQLiteConnection(myConnectionString);
+                myConnection.Open();
+
+                foreach (DataGridViewRow row in dataGridView1.SelectedRows)
+                {
+                    if (row.IsNewRow) continue;
+
+                    string id = row.Cells["ID"].Value.ToString();
+                    string title = row.Cells["Title"].Value.ToString();
+                    string input = row.Cells["Input"].Value.ToString();
+
+                    string query = "UPDATE data SET Title = @Title, Input = @Input WHERE ID = @ID";
+                    using (SQLiteCommand cmd = new SQLiteCommand(query, myConnection))
+                    {
+                        cmd.Parameters.AddWithValue("@ID", id);
+                        cmd.Parameters.AddWithValue("@Title", title);
+                        cmd.Parameters.AddWithValue("@Input", input);
+                        cmd.ExecuteNonQuery();
+                    }
+                }
+
+                MessageBox.Show("Seçili satırlar güncellendi.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                LoadData();
+            }
+            catch (Exception ex)
+            {
+                MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            }
+            finally
+            {
+                if (myConnection != null && myConnection.State == ConnectionState.Open)
+                {
+                    myConnection.Close();
+                }
+            }
+        }
+        
+        private void buttonSaveAll_Click(object sender, EventArgs e)
+        {
+            // Kullanıcıdan onay alın
+            DialogResult result = MessageBox.Show("Tüm değişiklikleri kaydetmek istediğinize emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    // Veritabanı bağlantısını aç
+                    myConnection = new SQLiteConnection(myConnectionString);
+                    myConnection.Open();
+
+                    // Komut oluşturucu ile veri güncelleme komutlarını oluştur
+                    SQLiteCommandBuilder commandBuilder = new SQLiteCommandBuilder(myDataAdapter);
+                    myDataAdapter.Update(myDataTable); // DataTable'daki değişiklikleri veritabanına güncelle
+
+                    // Başarılı mesajı göster
+                    MessageBox.Show("Tüm değişiklikler kaydedildi.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                    // Veritabanını yeniden yükle
+                    LoadData();
+                }
+                catch (Exception ex)
+                {
+                    // Hata mesajı göster
+                    MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    // Veritabanı bağlantısını kapat
+                    if (myConnection != null && myConnection.State == ConnectionState.Open)
+                    {
+                        myConnection.Close();
+                    }
+                }
+            }
+        }
+        
+        private void buttonFixID_Click(object sender, EventArgs e)
+        {
+            DialogResult result = MessageBox.Show("ID'leri yeniden sıralamak istediğinize emin misiniz?", "Onay", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                try
+                {
+                    myConnection = new SQLiteConnection(myConnectionString);
+                    myConnection.Open();
+
+                    // Geçici bir tablo oluştur
+                    string createTempTableQuery = "CREATE TEMP TABLE temp_data AS SELECT * FROM data ORDER BY ID";
+                    using (SQLiteCommand createTempTableCmd = new SQLiteCommand(createTempTableQuery, myConnection))
+                    {
+                        createTempTableCmd.ExecuteNonQuery();
+                    }
+
+                    // Orijinal tabloyu temizle
+                    string deleteOriginalTableQuery = "DELETE FROM data";
+                    using (SQLiteCommand deleteOriginalTableCmd = new SQLiteCommand(deleteOriginalTableQuery, myConnection))
+                    {
+                        deleteOriginalTableCmd.ExecuteNonQuery();
+                    }
+
+                    // Geçici tablodan verileri yeniden ID'leri sıralayarak orijinal tabloya ekle
+                    string insertBackQuery = "INSERT INTO data (ID, Title, Input) SELECT ROW_NUMBER() OVER (ORDER BY ID), Title, Input FROM temp_data";
+                    using (SQLiteCommand insertBackCmd = new SQLiteCommand(insertBackQuery, myConnection))
+                    {
+                        insertBackCmd.ExecuteNonQuery();
+                    }
+
+                    // Geçici tabloyu sil
+                    string dropTempTableQuery = "DROP TABLE temp_data";
+                    using (SQLiteCommand dropTempTableCmd = new SQLiteCommand(dropTempTableQuery, myConnection))
+                    {
+                        dropTempTableCmd.ExecuteNonQuery();
+                    }
+
+                    MessageBox.Show("ID'ler başarıyla yeniden sıralandı.", "Bilgi", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                }
+                catch (Exception ex)
+                {
+                    MessageBox.Show(ex.Message, "Hata", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                }
+                finally
+                {
+                    if (myConnection != null && myConnection.State == ConnectionState.Open)
+                    {
+                        myConnection.Close();
+                    }
+                }
+            }
+        }
+        
+        private void listBoxTitle_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (listBoxTitle.SelectedItem != null)
+            {
+                string selectedTitle = listBoxTitle.SelectedItem.ToString();
+                dataGridView1.ClearSelection();
+
+                foreach (DataGridViewRow row in dataGridView1.Rows)
+                {
+                    if (row.Cells["Title"].Value.ToString() == selectedTitle)
+                    {
+                        row.Selected = true;
+                        dataGridView1.FirstDisplayedScrollingRowIndex = row.Index;
+                        UpdateRichTextBoxAndListBox(selectedTitle, row.Cells["Input"].Value.ToString());
+                        break;
+                    }
+                }
+            }
+        }
+
+        private void dataGridView1_SelectionChanged(object sender, EventArgs e)
+        {
+            if (dataGridView1.SelectedRows.Count > 1)
+            {
+                listBoxTitle.SelectedIndexChanged -= listBoxTitle_SelectedIndexChanged;
+                listBoxTitle.ClearSelected();
+                listBoxTitle.SelectedIndexChanged += listBoxTitle_SelectedIndexChanged;
+            }
+        }
+
+        private void listBoxTitle_MouseDoubleClick(object sender, MouseEventArgs e)
+        {
+            int index = listBoxTitle.IndexFromPoint(e.Location);
+            if (index != ListBox.NoMatches)
+            {
+                var itemRectangle = listBoxTitle.GetItemRectangle(index);
+                textBoxEdit.Text = listBoxTitle.Items[index].ToString();
+                textBoxEdit.Tag = index;
+                textBoxEdit.Bounds = itemRectangle;
+                textBoxEdit.Visible = true;
+                textBoxEdit.Focus();
+            }
+        }
+
+        private void textBoxEdit_Leave(object sender, EventArgs e)
+        {
+            int index = (int)textBoxEdit.Tag;
+            string newTitle = textBoxEdit.Text;
+            string oldTitle = listBoxTitle.Items[index].ToString();
+
+            listBoxTitle.Items[index] = newTitle;
+            textBoxEdit.Visible = false;
+
+            // dataGridView1'deki ilgili satırı güncelle
+            foreach (DataGridViewRow row in dataGridView1.Rows)
+            {
+                if (row.Cells["Title"].Value.ToString() == oldTitle)
+                {
+                    row.Cells["Title"].Value = newTitle;
+                    row.Selected = true; // Satırı seçili yap
+                    dataGridView1.FirstDisplayedScrollingRowIndex = row.Index; // Seçili satırı görünür yap
+                    break;
+                }
+            }
+
+            // richTextBox1'deki son karakterden sonrasına odaklan
+            richTextBox1.SelectionStart = richTextBox1.Text.Length;
+            richTextBox1.SelectionLength = 0;
+            richTextBox1.Focus();
+        }
+
+        private void textBoxEdit_KeyDown(object sender, KeyEventArgs e)
+        {
+            if (e.KeyCode == Keys.Enter || e.KeyCode == Keys.Escape)
+            {
+                textBoxEdit_Leave(sender, e);
+            }
+        }
+
+        private void richTextBox1_SelectionChanged(object sender, EventArgs e)
+        {
+
+            if (dataGridView1.SelectedRows.Count > 1)
+            {
+                listBoxTitle.SelectedIndexChanged -= listBoxTitle_SelectedIndexChanged;
+                listBoxTitle.ClearSelected();
+                listBoxTitle.SelectedIndexChanged += listBoxTitle_SelectedIndexChanged;
+            }               
+        }
+
+        private void UpdateRichTextBoxAndListBox(string title, string input)
+        {
+            listBoxTitle.SelectedIndexChanged -= listBoxTitle_SelectedIndexChanged;
+            listBoxTitle.SelectedItem = title;
+            listBoxTitle.SelectedIndexChanged += listBoxTitle_SelectedIndexChanged;
+
+            richTextBox1.Text = input;
+        }
+
+        private void richTextBox1_Click(object sender, EventArgs e)
+        {
+            if (dataGridView1.CurrentRow != null)
+            {
+                // Seçili satırın Input kolonunu güncelle
+                dataGridView1.CurrentRow.Cells["Input"].Value = richTextBox1.Text;
+
+                // Değişikliklerin hemen yansımasını sağlamak için
+                dataGridView1.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        }
+    }
+}
